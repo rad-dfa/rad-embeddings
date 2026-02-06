@@ -4,11 +4,10 @@ This repo contains a JAX implementation of RAD embeddings, see [project webpage]
 
 # Installation
 
-This package will soon be made pip-installable and replace [this version](https://github.com/RAD-Embeddings/rad-embeddings). In the meantime, pull the repo and and install locally.
+Install using pip.
 
 ```
-git clone https://github.com/rad-dfa/rad-embeddings.git
-pip install -e rad-embeddings
+pip install rad-embeddings
 ```
 
 # Usage
