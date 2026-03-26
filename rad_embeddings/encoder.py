@@ -6,10 +6,10 @@ import distrax
 from dfa import DFA
 import jax.numpy as jnp
 import flax.linen as nn
-from ppo import make_train
+from .ppo import make_train
 from typing import Sequence
 from dfa_gym import DFABisimEnv
-from wrappers import LogWrapper
+from .wrappers import LogWrapper
 from dfax.samplers import RADSampler
 import flax.serialization as serialization
 from flax.traverse_util import flatten_dict
