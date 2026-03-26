@@ -6,9 +6,13 @@ import distrax
 from dfa import DFA
 import jax.numpy as jnp
 import flax.linen as nn
+from ppo import make_train
 from typing import Sequence
+from dfa_gym import DFABisimEnv
+from wrappers import LogWrapper
 from dfax.samplers import RADSampler
 import flax.serialization as serialization
+from flax.traverse_util import flatten_dict
 from dfax import DFAx, dfa2dfax, list2batch, batch2graph
 from flax.linen.initializers import constant, orthogonal
 
@@ -97,6 +101,103 @@ class EncoderModule(nn.Module):
             h = jnp.where((i < n_states)[:, None], _h, h)
 
         return self.g_embed(h[graph["current_state"]])
+
+    @classmethod
+    def train(
+        cls,
+        # Configuration
+        seed: int = 42,
+        save_dir: str | None = None,
+        max_size: int = 10,
+        n_tokens: int = 10,
+        wandb: bool = False,
+        wandb_entity: str = "beyazit-y-berkeley-eecs",
+        wandb_project: str = "rad-jax",
+        debug: bool = False,
+        log: str = "log.csv",
+        # Training hyperparameters
+        lr: float = 1e-3,
+        num_envs: int = 16,
+        num_steps: int = 512,
+        total_timesteps: int = 1e6,
+        update_epochs: int = 2,
+        num_minibatches: int = 8,
+        gamma: float = 0.9,
+        gae_lambda: float = 0.0,
+        clip_eps: float = 0.1,
+        ent_coef: float = 0.00,
+        vf_coef: float = 1.0,
+        max_grad_norm: float = 0.5,
+        anneal_lr: bool = False,
+    ):
+
+        config = {
+            "LR": lr,
+            "NUM_ENVS": num_envs,
+            "NUM_STEPS": num_steps,
+            "TOTAL_TIMESTEPS": total_timesteps,
+            "UPDATE_EPOCHS": update_epochs,
+            "NUM_MINIBATCHES": num_minibatches,
+            "GAMMA": gamma,
+            "GAE_LAMBDA": gae_lambda,
+            "CLIP_EPS": clip_eps,
+            "ENT_COEF": ent_coef,
+            "VF_COEF": vf_coef,
+            "MAX_GRAD_NORM": max_grad_norm,
+            "ANNEAL_LR": anneal_lr,
+        }
+
+        config["DEBUG"] = debug
+        config["WANDB"] = wandb
+        config["LOG"] = log
+
+        if config["WANDB"]:
+            wandb.init(
+                entity=wandb_entity,
+                project=wandb_project,
+                config=config
+            )
+
+        key = jax.random.PRNGKey(seed)
+
+        sampler = RADSampler(max_size=max_size, n_tokens=n_tokens)
+        env = DFABisimEnv(sampler=sampler)
+        env = LogWrapper(env=env, config=config)
+
+        encoder = cls(max_size=max_size)
+
+        network = ActorCritic(
+            action_dim=env.action_space(env.agents[0]).n,
+            encoder=encoder
+        )
+
+        if config["DEBUG"]:
+            key, subkey = jax.random.split(key)
+            init_x = env.observation_space(env.agents[0]).sample(subkey)
+            key, subkey = jax.random.split(key)
+            params = network.init(subkey, init_x)
+            flat = flatten_dict(params, sep="/")
+            total = 0
+            for k, v in flat.items():
+                count = v.size
+                total += count
+                print(f"{k:60} {v.shape} {v.dtype} ({count:,} params)")
+            print(f"\nTotal parameters: {total:,}")
+
+        train_jit = jax.jit(make_train(config, env, network))
+        out = train_jit(key)
+
+        if save_dir is None:
+            save_dir = os.path.join(os.path.dirname(__file__), "storage")
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        trained_params = out["runner_state"][0].params
+        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}.msgpack", "wb") as f:
+            f.write(serialization.to_bytes(trained_params))
+
+        if config["WANDB"]:
+            wandb.finish()
 
 
 def distance(feat_l, feat_r):
@@ -246,100 +347,4 @@ class Encoder:
 
     def distance(self, feat_l, feat_r):
         return distance(feat_l, feat_r)
-
-    def train(
-        self,
-        # Configuration
-        seed: int = 42,
-        save_dir: str | None = None,
-        max_size: int = 10,
-        n_tokens: int = 10,
-        wandb: bool = False,
-        wandb_entity: str = "beyazit-y-berkeley-eecs",
-        wandb_project: str = "rad-jax",
-        debug: bool = False,
-        log: str = "log.csv",
-        # Training hyperparameters
-        lr: float = 1e-3,
-        num_envs: int = 16,
-        num_steps: int = 512,
-        total_timesteps: int = 1e6,
-        update_epochs: int = 2,
-        num_minibatches: int = 8,
-        gamma: float = 0.9,
-        gae_lambda: float = 0.0,
-        clip_eps: float = 0.1,
-        ent_coef: float = 0.00,
-        vf_coef: float = 1.0,
-        max_grad_norm: float = 0.5,
-        anneal_lr: bool = False,
-    ):
-
-        config = {
-            "LR": lr,
-            "NUM_ENVS": num_envs,
-            "NUM_STEPS": num_steps,
-            "TOTAL_TIMESTEPS": total_timesteps,
-            "UPDATE_EPOCHS": update_epochs,
-            "NUM_MINIBATCHES": num_minibatches,
-            "GAMMA": gamma,
-            "GAE_LAMBDA": gae_lambda,
-            "CLIP_EPS": clip_eps,
-            "ENT_COEF": ent_coef,
-            "VF_COEF": vf_coef,
-            "MAX_GRAD_NORM": max_grad_norm,
-            "ANNEAL_LR": anneal_lr,
-        }
-
-        config["DEBUG"] = debug
-        config["WANDB"] = wandb
-        config["LOG"] = log
-
-        if config["WANDB"]:
-            wandb.init(
-                entity=wandb_entity,
-                project=wandb_project,
-                config=config
-            )
-
-        key = jax.random.PRNGKey(seed)
-
-        sampler = RADSampler(max_size=max_size, n_tokens=n_tokens)
-        env = DFABisimEnv(sampler=sampler)
-        env = LogWrapper(env=env, config=config)
-
-        encoder = EncoderModule(max_size=max_size)
-
-        network = ActorCritic(
-            action_dim=env.action_space(env.agents[0]).n,
-            encoder=encoder
-        )
-
-        if config["DEBUG"]:
-            key, subkey = jax.random.split(key)
-            init_x = env.observation_space(env.agents[0]).sample(subkey)
-            key, subkey = jax.random.split(key)
-            params = network.init(subkey, init_x)
-            flat = flatten_dict(params, sep="/")
-            total = 0
-            for k, v in flat.items():
-                count = v.size
-                total += count
-                print(f"{k:60} {v.shape} {v.dtype} ({count:,} params)")
-            print(f"\nTotal parameters: {total:,}")
-
-        train_jit = jax.jit(make_train(config, env, network))
-        out = train_jit(key)
-
-        if save_dir is None:
-            save_dir = os.path.join(os.path.dirname(__file__), "storage")
-
-        os.makedirs(save_dir, exist_ok=True)
-
-        trained_params = out["runner_state"][0].params
-        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}.msgpack", "wb") as f:
-            f.write(serialization.to_bytes(trained_params))
-
-        if config["WANDB"]:
-            wandb.finish()
 
