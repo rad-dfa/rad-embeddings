@@ -1,6 +1,6 @@
 [project]
 name = "rad-embeddings"
-version = "0.2.1"
+version = "0.2.2"
 description = "Python library for RAD Embeddings, provably correct latent DFA representations."
 authors = [
     { name = "Beyazit Yalcinkaya", email = "beyazit@berkeley.edu" }
