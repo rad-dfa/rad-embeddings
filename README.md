@@ -7,7 +7,8 @@ This repo contains a JAX implementation of RAD embeddings, see [project webpage]
 Install using pip.
 
 ```
-pip install rad-embeddings
+pip install rad-embeddings # CPU-only
+pip install rad-embeddings[cuda] # With CUDA
 ```
 
 # Usage
@@ -99,9 +100,21 @@ git clone https://github.com/rad-dfa/rad-embeddings.git
 uv run train.py --seed 42 --save-dir storage --max-size 10 --n-tokens 10 --debug
 ```-->
 
-See [train](https://github.com/rad-dfa/rad-embeddings/blob/main/rad_embeddings/train.py) and [test](https://github.com/rad-dfa/rad-embeddings/blob/main/test.py) scripts for more.
+Train a new encoder &mdash; see [encoder.py](https://github.com/rad-dfa/rad-embeddings/blob/85a0713b66d643f0792a6219df4c28789708c456/rad_embeddings/encoder.py#L106) for the default arguments of the `EncoderModule.train` class method.
 
+```python
+from rad_embeddings import EncoderModule
 
+EncoderModule.train(max_size=5, n_tokens=5, debug=True, save_dir="my_storage")
+```
+
+Load your trained parameters.
+
+```python
+from rad_embeddings import Encoder
+
+encoder = Encoder(max_size=5, n_tokens=5, storage_dir="my_storage")
+```
 
 # Citation
 
