@@ -11,6 +11,8 @@ dependencies = [
     "dfa-gym>=0.2.5",
     "jraph>=0.0.6.dev0",
     "distrax==0.1.5",
+    "wandb>=0.15.0",
+    "pandas>=1.5.0",
 ]
 
 [project.optional-dependencies]
