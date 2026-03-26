@@ -3,11 +3,13 @@ import re
 import jax
 import jraph
 import distrax
+from dfa import DFA
 import jax.numpy as jnp
 import flax.linen as nn
-from dfax import batch2graph
+from typing import Sequence
 from dfax.samplers import RADSampler
 import flax.serialization as serialization
+from dfax import DFAx, dfa2dfax, list2batch, batch2graph
 from flax.linen.initializers import constant, orthogonal
 
 
@@ -199,15 +201,43 @@ class Encoder:
             self.encoder_ac_params = serialization.from_bytes(params, f.read())
 
         self.encoder_params = {"params": self.encoder_ac_params["params"]["encoder"]}
-        safe_l2_norm = lambda x: jnp.sqrt(jnp.sum(x ** 2, axis=-1, keepdims=True) + jnp.finfo(jnp.float32).eps)
-        self.distance = lambda feat_l, feat_r: safe_l2_norm(
-            (feat_l / safe_l2_norm(feat_l)) - (feat_r / safe_l2_norm(feat_r))
-        )
 
-    def __call__(self, graph):
+    def input2graph(self, inp: DFAx | DFA | dict):
+        def _input2graph(x):
+            if isinstance(x, DFAx):
+                return x.to_graph()
+            elif isinstance(x, DFA):
+                return dfa2dfax(x).to_graph()
+            elif isinstance(x, dict):
+                return x
+            else:
+                raise TypeError(type(x))
+        graph = None
+        if isinstance(inp, DFAx) or isinstance(inp, DFA) or isinstance(inp, dict):
+            graph = _input2graph(inp)
+        elif isinstance(inp, Sequence) and not isinstance(inp, (str, bytes)):
+            batch = list2batch([_input2graph(x) for x in inp])
+            graph = batch2graph(batch)
+        else:
+            raise TypeError(type(inp))
+        assert graph is not None
+        return graph
+
+    def __call__(
+        self,
+        inp: DFAx | DFA | dict | Sequence
+    ):
+        graph = self.input2graph(inp)
         return jax.lax.stop_gradient(self.encoder.apply(self.encoder_params, graph))
 
-    def solve(self, problem):
+    def solve(
+        self,
+        inp_l: DFAx | DFA | dict | Sequence,
+        inp_r: DFAx | DFA | dict | Sequence
+    ):
+        graph_l = self.input2graph(inp_l)
+        graph_r = self.input2graph(inp_r)
+        problem = {"graph_l": graph_l, "graph_r": graph_r}
         action, _ = jax.lax.stop_gradient(self.encoder_ac.apply(self.encoder_ac_params, problem))
         return action
 

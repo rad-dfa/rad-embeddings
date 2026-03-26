@@ -59,7 +59,7 @@ if __name__ == "__main__":
         done = False
         while not done:
             problem = obs[env.agents[0]]
-            action = encoder.solve(problem)
+            action = encoder.solve(problem["graph_l"], problem["graph_r"])
             feat_l = encoder(problem["graph_l"])
             feat_r = encoder(problem["graph_r"])
             distance = encoder.distance(feat_l, feat_r)

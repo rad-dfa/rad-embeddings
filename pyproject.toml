@@ -1,6 +1,6 @@
 [project]
 name = "rad-embeddings"
-version = "0.2.0"
+version = "0.2.1"
 description = "Python library for RAD Embeddings, provably correct latent DFA representations."
 authors = [
     { name = "Beyazit Yalcinkaya", email = "beyazit@berkeley.edu" }
@@ -8,9 +8,14 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "dfa-gym>=0.2.0",
+    "dfa-gym>=0.2.5",
     "jraph>=0.0.6.dev0",
     "distrax==0.1.5",
+]
+
+[project.optional-dependencies]
+cuda = [
+    "dfa-gym[cuda]>=0.2.5",
 ]
 
 [build-system]
