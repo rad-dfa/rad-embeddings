@@ -516,7 +516,7 @@ cuda = [
 
 [[package]]
 name = "dfax"
-version = "0.1.12"
+version = "0.1.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chex" },
@@ -527,9 +527,9 @@ dependencies = [
     { name = "matplotlib" },
     { name = "networkx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a9/97/e951bd0f67cf7bfd48df9bb7ca70e82c378bef0f283c0bb796a033063083/dfax-0.1.12.tar.gz", hash = "sha256:1a2c16769cde39932989b45a812cdda0c7fa029ead3b552b6b56bb2cca47a129", size = 120756 }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/76/ce1bf7b56a7b0d27f325312922fd0280389c0597abb07eb698cbdd2d0cdf/dfax-0.1.16.tar.gz", hash = "sha256:acb8d03056f6639ad0cb7ece216f5c8e55e8b333b59e76adbf69af707b74f0be", size = 694404 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/8b/8cad2bc61d16e43eafd1d427d321de7b71a53b7f64e386a3096e48dc7b42/dfax-0.1.12-py3-none-any.whl", hash = "sha256:b809ffe00c1aa99fe3874691b6f78872fa1ca901c74c2c572f964796cadd6be3", size = 12211 },
+    { url = "https://files.pythonhosted.org/packages/8e/b8/56cec76a804ebb69b93b277e23d15ca1d35cec4c1453621603840d308c02/dfax-0.1.16-py3-none-any.whl", hash = "sha256:d6415e31350c4718675cfe535d35f29aa491ca49b88019f87ec191076dc5811e", size = 600218 },
 ]
 
 [package.optional-dependencies]
@@ -2123,10 +2123,11 @@ wheels = [
 
 [[package]]
 name = "rad-embeddings"
-version = "0.2.3"
+version = "0.2.4"
 source = { editable = "." }
 dependencies = [
     { name = "dfa-gym" },
+    { name = "dfax" },
     { name = "distrax" },
     { name = "jraph" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2137,12 +2138,15 @@ dependencies = [
 [package.optional-dependencies]
 cuda = [
     { name = "dfa-gym", extra = ["cuda"] },
+    { name = "dfax", extra = ["cuda"] },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "dfa-gym", specifier = ">=0.2.5" },
     { name = "dfa-gym", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.2.5" },
+    { name = "dfax", specifier = ">=0.1.16" },
+    { name = "dfax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.1.16" },
     { name = "distrax", specifier = "==0.1.5" },
     { name = "jraph", specifier = ">=0.0.6.dev0" },
     { name = "pandas", specifier = ">=1.5.0" },

@@ -8,6 +8,7 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "dfax>=0.1.16",
     "dfa-gym>=0.2.5",
     "jraph>=0.0.6.dev0",
     "distrax==0.1.5",
@@ -17,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 cuda = [
+    "dfax[cuda]>=0.1.16",
     "dfa-gym[cuda]>=0.2.5",
 ]
 
