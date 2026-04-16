@@ -30,6 +30,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-size",
         type=int,
+        default=None,
+        help="Max DFA size, i.e., number of states, to be passed to the encoder (default: None, i.e., unbounded)"
+    )
+    parser.add_argument(
+        "--n-states",
+        type=int,
         default=10,
         help="Number of DFA states (default: 10)"
     )
@@ -43,7 +49,7 @@ if __name__ == "__main__":
 
     key = jax.random.PRNGKey(args.seed)
 
-    sampler = RADSampler(max_size=args.max_size, n_tokens=args.n_tokens)
+    sampler = RADSampler(max_size=args.n_states, n_tokens=args.n_tokens)
     encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed)
     env = DFABisimEnv(sampler=sampler)
 

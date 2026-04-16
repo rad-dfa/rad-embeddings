@@ -89,7 +89,9 @@ class EncoderModule(nn.Module):
         h = h0
         n_states = graph["n_states"]
 
-        for i in range(self.max_size):
+        n_iters = self.max_size if self.max_size is not None else n_states.max()
+
+        for i in range(n_iters):
             _h = nn.tanh(
                 self.gatv2(
                     node_features=jnp.concatenate([h, h0], axis=-1),
@@ -272,13 +274,12 @@ class Encoder:
             m = pattern.match(fname)
             if m:
                 f_max_size, f_n_tokens, f_seed = map(int, m.groups())
-                if f_n_tokens == n_tokens and f_max_size >= max_size:
+                if f_n_tokens == n_tokens:
                     candidates.append((f_max_size, f_seed, fname))
 
         if not candidates:
             raise FileNotFoundError(
-                f"No pretrained encoder found with max_size >= {max_size} "
-                f"and n_tokens == {n_tokens}"
+                f"No pretrained encoder found with n_tokens == {n_tokens}"
             )
 
         candidates.sort(key=lambda x: x[0])
@@ -297,7 +298,7 @@ class Encoder:
         if chosen is None:
             raise FileNotFoundError(
                 f"No pretrained encoder found for seed {seed} or fallback seed 42 "
-                f"with constraints max_size >= {max_size}, n_tokens == {n_tokens}"
+                f"with n_tokens == {n_tokens}"
             )
 
         params_file = os.path.join(storage_dir, chosen[2])
