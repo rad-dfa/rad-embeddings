@@ -22,7 +22,7 @@ for seed in seeds:
             max_size=args.n_states,
             n_tokens=args.n_tokens,
             save_dir=args.save_dir,
-            log=f"{args.save_dir}/log_n_states_{args.n_states}_n_tokens_{args.n_tokens}_gamma_{gamma}_binary_reward_{binary_reward}_seed_{seed}.csv",
+            log=f"{args.save_dir}/log_n_states_{args.n_states}_n_tokens_{args.n_tokens}_binary_reward_{args.binary_reward}_gamma_{gamma}_seed_{seed}.csv",
             gamma=gamma,
             binary_reward=args.binary_reward
         )
