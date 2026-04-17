@@ -8,7 +8,6 @@ from dfax.samplers import RADSampler
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Test DFA encoder")
-    parser = argparse.ArgumentParser(description="Train DFA encoder")
     parser.add_argument(
         "--seed",
         type=int,
@@ -68,7 +67,7 @@ if __name__ == "__main__":
         init_state = state
         generated_str = []
         done = False
-        while not done:
+        for j in range(args.n_states):
             problem = obs[env.agents[0]]
             action = encoder.solve(problem["graph_l"], problem["graph_r"])
             feat_l = encoder(problem["graph_l"])
@@ -80,13 +79,14 @@ if __name__ == "__main__":
             obs, state, reward, done, info = env.step(subkey, state, action)
             done = done["__all__"]
             total_reward += reward["agent_0"]
-            if done:
-                if reward["agent_0"] == 1:
+            if done or (j == (args.n_states - 1)):
+                if reward["agent_0"] > 0:
                     accept_count += 1
-                elif reward["agent_0"] == -1:
+                elif reward["agent_0"] < 0:
                     reject_count += 1
                 else:
                     undecide_count += 1
+                break
 
         print(f"Test completed for {i + 1} samples.", end="\r")
 
