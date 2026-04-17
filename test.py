@@ -45,13 +45,18 @@ if __name__ == "__main__":
         default=10,
         help="Number tokens (default: 10)"
     )
+    parser.add_argument(
+        "--binary-reward",
+        action="store_true",
+        help="Use binary rewards in the environment and encoder (default: False)"
+    )
     args = parser.parse_args()
 
     key = jax.random.PRNGKey(args.seed)
 
     sampler = RADSampler(max_size=args.n_states, n_tokens=args.n_tokens)
-    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed)
-    env = DFABisimEnv(sampler=sampler)
+    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, binary_reward=args.binary_reward)
+    env = DFABisimEnv(sampler=sampler, binary_reward=args.binary_reward)
 
     total_reward = 0
     accept_count = 0
@@ -87,7 +92,7 @@ if __name__ == "__main__":
 
     print(f"Test completed for {args.n} samples.")
     print(f"Mean reward:", total_reward/args.n)
-    print(f"Accept rate:", accept_count/args.n)
-    print(f"Reject rate:", reject_count/args.n)
+    print(f"Accepted rate:", accept_count/args.n)
+    print(f"Rejected rate:", reject_count/args.n)
     print(f"Undecided rate:", undecide_count/args.n)
 

@@ -500,14 +500,14 @@ wheels = [
 
 [[package]]
 name = "dfa-gym"
-version = "0.2.16"
+version = "0.2.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dfax" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/76/09/e598f9467aa34afe8a588f619fc8c63d080e78c0ac35afd7500301a247ae/dfa_gym-0.2.16.tar.gz", hash = "sha256:700b11a934d5745fb6425f9e9182eb6134980c22500ab16ba4a188bba1823253", size = 208438, upload-time = "2026-04-17T07:15:37.307Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/43/81/684e4f3620734757dd645422ff5d16dda47c7f441db87350d6a7a054a9d2/dfa_gym-0.2.18.tar.gz", hash = "sha256:be53e43812e8fd5323e78e55f495cdd983cd4ce8793d3488b6e2f1dd845ee407", size = 208443, upload-time = "2026-04-17T17:03:10.495Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/ea/1f6fb34393524574e716ac2bc3d0b0ca9ff6f99824a1a03309fadb3c0462/dfa_gym-0.2.16-py3-none-any.whl", hash = "sha256:eaa72979eaf2e5fe672b5e57f336c62a9adb3432781e88026de875089390296a", size = 114279, upload-time = "2026-04-17T07:15:35.809Z" },
+    { url = "https://files.pythonhosted.org/packages/69/e0/425dec3f8362f6c7417599d0f83bba56f104aa322700587b70878955e8ea/dfa_gym-0.2.18-py3-none-any.whl", hash = "sha256:dade51a97a52b0f04d3cb2fc50f0bc4ea39f675a874c1560c5975cd4dd886de4", size = 114279, upload-time = "2026-04-17T17:03:09.272Z" },
 ]
 
 [package.optional-dependencies]
@@ -2124,7 +2124,7 @@ wheels = [
 
 [[package]]
 name = "rad-embeddings"
-version = "0.2.4"
+version = "0.2.5"
 source = { editable = "." }
 dependencies = [
     { name = "dfa-gym" },
@@ -2144,8 +2144,8 @@ cuda = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dfa-gym", specifier = ">=0.2.16" },
-    { name = "dfa-gym", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.2.16" },
+    { name = "dfa-gym", specifier = ">=0.2.18" },
+    { name = "dfa-gym", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.2.18" },
     { name = "dfax", specifier = ">=0.1.16" },
     { name = "dfax", extras = ["cuda"], marker = "extra == 'cuda'", specifier = ">=0.1.16" },
     { name = "distrax", specifier = "==0.1.5" },
