@@ -197,7 +197,7 @@ class EncoderModule(nn.Module):
         os.makedirs(save_dir, exist_ok=True)
 
         trained_params = out["runner_state"][0].params
-        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}_binary_reward_{binary_reward}.msgpack", "wb") as f:
+        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}_binary_reward_{binary_reward}_gamma_{gamma}.msgpack", "wb") as f:
             f.write(serialization.to_bytes(trained_params))
 
         if config["WANDB"]:
@@ -256,6 +256,7 @@ class Encoder:
         seed: int = 42,
         storage_dir: str | None = None,
         binary_reward: bool = False,
+        gamma: float = 0.9
     ):
         key = jax.random.PRNGKey(seed)
         self.encoder = EncoderModule(max_size=max_size)
@@ -269,20 +270,21 @@ class Encoder:
             storage_dir = os.path.join(os.path.dirname(__file__), "storage")
 
         pattern = re.compile(
-            r"encoder_params_max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)\.msgpack"
+            r"encoder_params_max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)_gamma_([\d\.eE+-]+)\.msgpack"
         )
 
         candidates = []
         for fname in os.listdir(storage_dir):
             m = pattern.match(fname)
             if m:
-                f_max_size, f_n_tokens, f_seed, f_binary_reward = m.groups()
+                f_max_size, f_n_tokens, f_seed, f_binary_reward, f_gamma = m.groups()
                 f_max_size = int(f_max_size)
                 f_n_tokens = int(f_n_tokens)
                 f_seed = int(f_seed)
                 f_binary_reward = f_binary_reward == "True"
-                if f_n_tokens == n_tokens and f_binary_reward == binary_reward:
-                    candidates.append((f_max_size, f_seed, fname))
+                f_gamma = float(f_gamma)
+                if f_n_tokens == n_tokens and f_binary_reward == binary_reward and (abs(f_gamma - self.gamma) < 1e-8):
+                    candidates.append((f_max_size, f_seed, f_gamma, fname))
 
         if not candidates:
             raise FileNotFoundError(
