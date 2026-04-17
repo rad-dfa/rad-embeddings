@@ -2,6 +2,7 @@ import os
 import re
 import jax
 import jraph
+import wandb
 import distrax
 from dfa import DFA
 import jax.numpy as jnp
@@ -112,7 +113,8 @@ class EncoderModule(nn.Module):
         save_dir: str | None = None,
         max_size: int = 10,
         n_tokens: int = 10,
-        wandb: bool = False,
+        binary_reward: bool = False,
+        enable_wandb: bool = False,
         wandb_entity: str = "beyazit-y-berkeley-eecs",
         wandb_project: str = "rad-jax",
         debug: bool = False,
@@ -150,7 +152,7 @@ class EncoderModule(nn.Module):
         }
 
         config["DEBUG"] = debug
-        config["WANDB"] = wandb
+        config["WANDB"] = enable_wandb
         config["LOG"] = log
 
         if config["WANDB"]:
@@ -163,7 +165,7 @@ class EncoderModule(nn.Module):
         key = jax.random.PRNGKey(seed)
 
         sampler = RADSampler(max_size=max_size, n_tokens=n_tokens)
-        env = DFABisimEnv(sampler=sampler)
+        env = DFABisimEnv(sampler=sampler, binary_reward=binary_reward)
         env = LogWrapper(env=env, config=config)
 
         encoder = cls(max_size=max_size)
@@ -195,7 +197,7 @@ class EncoderModule(nn.Module):
         os.makedirs(save_dir, exist_ok=True)
 
         trained_params = out["runner_state"][0].params
-        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}.msgpack", "wb") as f:
+        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}_binary_reward_{binary_reward}.msgpack", "wb") as f:
             f.write(serialization.to_bytes(trained_params))
 
         if config["WANDB"]:
@@ -253,6 +255,7 @@ class Encoder:
         n_tokens: int = 10,
         seed: int = 42,
         storage_dir: str | None = None,
+        binary_reward: bool = False,
     ):
         key = jax.random.PRNGKey(seed)
         self.encoder = EncoderModule(max_size=max_size)
@@ -266,20 +269,24 @@ class Encoder:
             storage_dir = os.path.join(os.path.dirname(__file__), "storage")
 
         pattern = re.compile(
-            r"encoder_params_max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)\.msgpack"
+            r"encoder_params_max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)\.msgpack"
         )
 
         candidates = []
         for fname in os.listdir(storage_dir):
             m = pattern.match(fname)
             if m:
-                f_max_size, f_n_tokens, f_seed = map(int, m.groups())
-                if f_n_tokens == n_tokens:
+                f_max_size, f_n_tokens, f_seed, f_binary_reward = m.groups()
+                f_max_size = int(f_max_size)
+                f_n_tokens = int(f_n_tokens)
+                f_seed = int(f_seed)
+                f_binary_reward = f_binary_reward == "True"
+                if f_n_tokens == n_tokens and f_binary_reward == binary_reward:
                     candidates.append((f_max_size, f_seed, fname))
 
         if not candidates:
             raise FileNotFoundError(
-                f"No pretrained encoder found with n_tokens == {n_tokens}"
+                f"No pretrained encoder found with n_tokens == {n_tokens} and binary_reward == {binary_reward}"
             )
 
         candidates.sort(key=lambda x: x[0])
