@@ -256,7 +256,8 @@ class Encoder:
         seed: int = 42,
         storage_dir: str | None = None,
         binary_reward: bool = False,
-        gamma: float = 0.9
+        gamma: float = 0.9,
+        debug: bool = False,
     ):
         key = jax.random.PRNGKey(seed)
         self.encoder = EncoderModule(max_size=max_size)
@@ -265,6 +266,8 @@ class Encoder:
         dfa_graph = dfa.to_graph()
         self.encoder_ac = ActorCritic(action_dim=n_tokens, encoder=self.encoder, deterministic=True)
         params = self.encoder_ac.init(key, {"graph_l": dfa_graph, "graph_r": dfa_graph})
+        self.gamma = gamma
+        self.debug = debug
 
         if storage_dir is None:
             storage_dir = os.path.join(os.path.dirname(__file__), "storage")
@@ -310,11 +313,14 @@ class Encoder:
                 f"with n_tokens == {n_tokens}"
             )
 
-        params_file = os.path.join(storage_dir, chosen[2])
+        params_file = os.path.join(storage_dir, chosen[3])
         with open(params_file, "rb") as f:
             self.encoder_ac_params = serialization.from_bytes(params, f.read())
 
         self.encoder_params = {"params": self.encoder_ac_params["params"]["encoder"]}
+
+        if self.debug:
+            print(f"Loaded parameters: {params_file}")
 
     def input2graph(self, inp: DFAx | DFA | dict):
         def _input2graph(x):

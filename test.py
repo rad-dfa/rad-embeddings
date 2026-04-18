@@ -49,12 +49,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Use binary rewards in the environment and encoder (default: False)"
     )
+    parser.add_argument(
+        "--gamma",
+        type=float,
+        default=0.9,
+        help="Gamma (default: 0.9)"
+    )
     args = parser.parse_args()
 
     key = jax.random.PRNGKey(args.seed)
 
     sampler = RADSampler(max_size=args.n_states, n_tokens=args.n_tokens)
-    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, binary_reward=args.binary_reward)
+    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, binary_reward=args.binary_reward, gamma=args.gamma, debug=True)
     env = DFABisimEnv(sampler=sampler, binary_reward=args.binary_reward)
 
     total_reward = 0
