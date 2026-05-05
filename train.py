@@ -7,6 +7,7 @@ parser.add_argument("--n-states", type=int, default=10, help="Number of states i
 parser.add_argument("--n-tokens", type=int, default=10, help="Number of tokens in the chain DFA")
 parser.add_argument("--save-dir", type=str, default="storage", help="Directory to save training results")
 parser.add_argument("--binary-reward", action="store_true", help="Use binary rewards in the environment and encoder")
+parser.add_argument("--debug", action="store_true", help="Enable debug mode for training.")
 
 args = parser.parse_args()
 
@@ -24,6 +25,7 @@ for seed in seeds:
             save_dir=args.save_dir,
             log=f"{args.save_dir}/log_n_states_{args.n_states}_n_tokens_{args.n_tokens}_binary_reward_{args.binary_reward}_gamma_{gamma}_seed_{seed}.csv",
             gamma=gamma,
-            binary_reward=args.binary_reward
+            binary_reward=args.binary_reward,
+            debug=args.debug
         )
 
