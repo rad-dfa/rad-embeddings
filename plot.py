@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from rad_embeddings.paths import default_storage_dir, parse_log_name
 
 # Runs that share these fields are treated as seeds of the same configuration.
-GROUP_KEYS = ("max_size", "n_tokens", "binary_reward", "gamma", "experimental")
+GROUP_KEYS = ("max_size", "n_tokens", "binary_reward", "gamma")
 
 
 def load_runs(log_dir):
@@ -15,7 +15,7 @@ def load_runs(log_dir):
     Load all CSVs named by rad_embeddings.paths.log_path and group them by configuration.
     Returns:
         runs_by_group = {
-            (max_size, n_tokens, binary_reward, gamma, experimental): [df_seed1, df_seed2, ...],
+            (max_size, n_tokens, binary_reward, gamma): [df_seed1, df_seed2, ...],
             ...
         }
     """

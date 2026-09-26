@@ -120,7 +120,6 @@ class EncoderModule(nn.Module):
         debug: bool = False,
         log: str | bool | None = None,
         overwrite: bool = False,
-        experimental: bool = False,
         # Training hyperparameters
         lr: float = 1e-3,
         num_envs: int = 16,
@@ -142,7 +141,7 @@ class EncoderModule(nn.Module):
             save_dir = default_storage_dir()
         os.makedirs(save_dir, exist_ok=True)
 
-        run = dict(max_size=max_size, n_tokens=n_tokens, seed=seed, binary_reward=binary_reward, gamma=gamma, experimental=experimental)
+        run = dict(max_size=max_size, n_tokens=n_tokens, seed=seed, binary_reward=binary_reward, gamma=gamma)
         params_file = checkpoint_path(save_dir, **run)
         if log is None:
             log = log_path(save_dir, **run)
@@ -175,7 +174,6 @@ class EncoderModule(nn.Module):
         config["DEBUG"] = debug
         config["WANDB"] = enable_wandb
         config["LOG"] = log
-        config["EXPERIMENTAL"] = experimental
 
         if config["WANDB"]:
             wandb.init(
@@ -195,8 +193,7 @@ class EncoderModule(nn.Module):
 
         network = ActorCritic(
             action_dim=env.action_space(env.agents[0]).n,
-            encoder=encoder,
-            experimental=experimental
+            encoder=encoder
         )
 
         if config["DEBUG"]:
@@ -234,20 +231,9 @@ class ActorCritic(nn.Module):
     action_dim: int
     encoder: nn.Module
     deterministic: bool = False
-    experimental: bool = False
 
     def setup(self):
-        if self.experimental:
-            # Two hidden layers: with one, relu(x) - relu(-x) = x makes the antisymmetrized MLP linear at init.
-            self.policy_mlp = nn.Sequential([
-                nn.Dense(64, kernel_init=orthogonal(2 ** 0.5), bias_init=constant(0.0)),
-                nn.relu,
-                nn.Dense(64, kernel_init=orthogonal(2 ** 0.5), bias_init=constant(0.0)),
-                nn.relu,
-                nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)),
-            ])
-        else:
-            self.policy_head = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0))
+        self.policy_head = nn.Dense(self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0))
 
     def __call__(self, batch):
         
@@ -268,11 +254,7 @@ class ActorCritic(nn.Module):
         feat_l, feat_r = jnp.array_split(feat, 2)
 
         value = distance(feat_l, feat_r)
-        if self.experimental:
-            # Antisymmetric in (l, r): swapping the DFAs negates the logits.
-            logits = self.policy_mlp(feat_l - feat_r) - self.policy_mlp(feat_r - feat_l)
-        else:
-            logits = self.policy_head(feat_l - feat_r)
+        logits = self.policy_head(feat_l - feat_r)
 
         if self.deterministic:
             action = jnp.argmax(logits, axis=-1)
@@ -292,14 +274,13 @@ class Encoder:
         binary_reward: bool = False,
         gamma: float = 0.9,
         debug: bool = False,
-        experimental: bool = False,
     ):
         key = jax.random.PRNGKey(seed)
         self.encoder = EncoderModule(max_size=max_size)
         sampler = RADSampler()
         dfa = sampler.sample(key)
         dfa_graph = dfa.to_graph()
-        self.encoder_ac = ActorCritic(action_dim=n_tokens, encoder=self.encoder, deterministic=True, experimental=experimental)
+        self.encoder_ac = ActorCritic(action_dim=n_tokens, encoder=self.encoder, deterministic=True)
         params = self.encoder_ac.init(key, {"graph_l": dfa_graph, "graph_r": dfa_graph})
         self.gamma = gamma
         self.debug = debug
@@ -314,14 +295,13 @@ class Encoder:
             if run is None:
                 continue
             available.append(fname)
-            if run["n_tokens"] == n_tokens and run["binary_reward"] == binary_reward and (abs(run["gamma"] - self.gamma) < 1e-8) and run["experimental"] == experimental:
+            if run["n_tokens"] == n_tokens and run["binary_reward"] == binary_reward and (abs(run["gamma"] - self.gamma) < 1e-8):
                 candidates.append((run["max_size"], run["seed"], run["gamma"], fname))
 
         if not candidates:
             raise FileNotFoundError(
                 f"No pretrained encoder found in {storage_dir} with n_tokens == {n_tokens}, "
-                f"binary_reward == {binary_reward}, gamma == {gamma} and experimental == {experimental}. "
-                f"Available checkpoints: {available}"
+                f"binary_reward == {binary_reward} and gamma == {gamma}. Available checkpoints: {available}"
             )
 
         # Prefer checkpoints trained at the requested max_size, then smaller training sizes.

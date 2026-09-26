@@ -22,7 +22,6 @@ parser.add_argument("--wandb-entity", type=str, default=defaults["wandb_entity"]
 parser.add_argument("--wandb-project", type=str, default=defaults["wandb_project"], help="W&B project")
 parser.add_argument("--debug", action="store_true", default=defaults["debug"], help="Print parameter shapes and per-update metrics")
 parser.add_argument("--overwrite", action="store_true", default=defaults["overwrite"], help="Replace an existing checkpoint and log for this run")
-parser.add_argument("--experimental", action="store_true", default=defaults["experimental"], help="Use the antisymmetric MLP policy head: logits = mlp(feat_l - feat_r) - mlp(feat_r - feat_l)")
 
 args = parser.parse_args()
 
@@ -32,7 +31,6 @@ run = dict(
     seed=args.seed,
     binary_reward=args.binary_reward,
     gamma=args.gamma,
-    experimental=args.experimental,
 )
 
 print(f"Checkpoint: {checkpoint_path(args.save_dir, **run)}")

@@ -6,7 +6,7 @@ CHECKPOINT_EXT = ".msgpack"
 LOG_PREFIX = "log"
 LOG_EXT = ".csv"
 
-_RUN_PATTERN = r"max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)_gamma_([\d\.eE+-]+)(_experimental)?"
+_RUN_PATTERN = r"max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)_gamma_([\d\.eE+-]+)"
 _CHECKPOINT_RE = re.compile(rf"{CHECKPOINT_PREFIX}_{_RUN_PATTERN}{re.escape(CHECKPOINT_EXT)}")
 _LOG_RE = re.compile(rf"{LOG_PREFIX}_{_RUN_PATTERN}{re.escape(LOG_EXT)}")
 
@@ -15,11 +15,9 @@ def default_storage_dir() -> str:
     return os.path.join(os.path.dirname(__file__), "storage")
 
 
-def run_name(max_size: int, n_tokens: int, seed: int, binary_reward: bool, gamma: float, experimental: bool = False) -> str:
+def run_name(max_size: int, n_tokens: int, seed: int, binary_reward: bool, gamma: float) -> str:
     # repr(float(...)) round-trips exactly, so 0.9 from the CLI and 0.9 from Python give the same name
-    name = f"max_size_{int(max_size)}_n_tokens_{int(n_tokens)}_seed_{int(seed)}_binary_reward_{bool(binary_reward)}_gamma_{float(gamma)!r}"
-    # Suffix only when set, so names of standard runs are unaffected
-    return f"{name}_experimental" if experimental else name
+    return f"max_size_{int(max_size)}_n_tokens_{int(n_tokens)}_seed_{int(seed)}_binary_reward_{bool(binary_reward)}_gamma_{float(gamma)!r}"
 
 
 def checkpoint_path(save_dir: str, **run) -> str:
@@ -34,7 +32,7 @@ def _parse(regex: re.Pattern, fname: str) -> dict | None:
     m = regex.fullmatch(os.path.basename(fname))
     if m is None:
         return None
-    max_size, n_tokens, seed, binary_reward, gamma, experimental = m.groups()
+    max_size, n_tokens, seed, binary_reward, gamma = m.groups()
     try:
         gamma = float(gamma)
     except ValueError:
@@ -45,7 +43,6 @@ def _parse(regex: re.Pattern, fname: str) -> dict | None:
         "seed": int(seed),
         "binary_reward": binary_reward == "True",
         "gamma": gamma,
-        "experimental": experimental is not None,
     }
 
 
