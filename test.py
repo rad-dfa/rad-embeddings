@@ -55,12 +55,17 @@ if __name__ == "__main__":
         default=0.9,
         help="Gamma (default: 0.9)"
     )
+    parser.add_argument(
+        "--experimental",
+        action="store_true",
+        help="Load an encoder trained with the experimental antisymmetric MLP policy head (default: False)"
+    )
     args = parser.parse_args()
 
     key = jax.random.PRNGKey(args.seed)
 
     sampler = RADSampler(max_size=args.n_states, n_tokens=args.n_tokens)
-    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, storage_dir=args.save_dir, binary_reward=args.binary_reward, gamma=args.gamma, debug=True)
+    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, storage_dir=args.save_dir, binary_reward=args.binary_reward, gamma=args.gamma, debug=True, experimental=args.experimental)
     env = DFABisimEnv(sampler=sampler, binary_reward=args.binary_reward)
 
     total_reward = 0
