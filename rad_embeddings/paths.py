@@ -6,7 +6,11 @@ CHECKPOINT_EXT = ".msgpack"
 LOG_PREFIX = "log"
 LOG_EXT = ".csv"
 
-_RUN_PATTERN = r"max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)_gamma_([\d\.eE+-]+)"
+# The sampler and p keys are optional only to read names written before they existed; run_name always writes them.
+_RUN_PATTERN = r"max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)_gamma_([\d\.eE+-]+)(?:_sampler_([A-Za-z]+)_p_(None|[\d\.eE+-]+))?"
+# Every run before those keys existed was trained with RADSampler and its default p (0.5 in every dfax release).
+_LEGACY_SAMPLER = "RAD"
+_LEGACY_P = "0.5"
 _CHECKPOINT_RE = re.compile(rf"{CHECKPOINT_PREFIX}_{_RUN_PATTERN}{re.escape(CHECKPOINT_EXT)}")
 _LOG_RE = re.compile(rf"{LOG_PREFIX}_{_RUN_PATTERN}{re.escape(LOG_EXT)}")
 
@@ -15,9 +19,10 @@ def default_storage_dir() -> str:
     return os.path.join(os.path.dirname(__file__), "storage")
 
 
-def run_name(max_size: int, n_tokens: int, seed: int, binary_reward: bool, gamma: float) -> str:
+def run_name(max_size: int, n_tokens: int, seed: int, binary_reward: bool, gamma: float, sampler: str, p: float | None) -> str:
     # repr(float(...)) round-trips exactly, so 0.9 from the CLI and 0.9 from Python give the same name
-    return f"max_size_{int(max_size)}_n_tokens_{int(n_tokens)}_seed_{int(seed)}_binary_reward_{bool(binary_reward)}_gamma_{float(gamma)!r}"
+    p = "None" if p is None else repr(float(p))
+    return f"max_size_{int(max_size)}_n_tokens_{int(n_tokens)}_seed_{int(seed)}_binary_reward_{bool(binary_reward)}_gamma_{float(gamma)!r}_sampler_{sampler}_p_{p}"
 
 
 def checkpoint_path(save_dir: str, **run) -> str:
@@ -32,9 +37,11 @@ def _parse(regex: re.Pattern, fname: str) -> dict | None:
     m = regex.fullmatch(os.path.basename(fname))
     if m is None:
         return None
-    max_size, n_tokens, seed, binary_reward, gamma = m.groups()
+    max_size, n_tokens, seed, binary_reward, gamma, sampler, p = m.groups()
+    p = p or _LEGACY_P
     try:
         gamma = float(gamma)
+        p = None if p == "None" else float(p)
     except ValueError:
         return None
     return {
@@ -43,6 +50,8 @@ def _parse(regex: re.Pattern, fname: str) -> dict | None:
         "seed": int(seed),
         "binary_reward": binary_reward == "True",
         "gamma": gamma,
+        "sampler": sampler or _LEGACY_SAMPLER,
+        "p": p,
     }
 
 

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from rad_embeddings.paths import default_storage_dir, parse_log_name
 
 # Runs that share these fields are treated as seeds of the same configuration.
-GROUP_KEYS = ("max_size", "n_tokens", "binary_reward", "gamma")
+GROUP_KEYS = ("max_size", "n_tokens", "binary_reward", "gamma", "sampler", "p")
 
 
 def load_runs(log_dir):
@@ -15,7 +15,7 @@ def load_runs(log_dir):
     Load all CSVs named by rad_embeddings.paths.log_path and group them by configuration.
     Returns:
         runs_by_group = {
-            (max_size, n_tokens, binary_reward, gamma): [df_seed1, df_seed2, ...],
+            (max_size, n_tokens, binary_reward, gamma, sampler, p): [df_seed1, df_seed2, ...],
             ...
         }
     """
@@ -95,7 +95,7 @@ def plot_metrics(aggregated, labels, output_dir):
     for metric in metrics:
         plt.figure(figsize=(8, 5))
 
-        for group in sorted(aggregated.keys()):
+        for group in sorted(aggregated.keys(), key=lambda g: tuple(float("-inf") if v is None else v for v in g)):
             df = aggregated[group]
             x = df["timestep"].values
             mean = df[f"{metric}_mean"].values

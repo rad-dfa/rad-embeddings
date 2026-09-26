@@ -10,12 +10,57 @@ from .ppo import make_train
 from typing import Sequence
 from dfa_gym import DFABisimEnv
 from .wrappers import LogWrapper
-from dfax.samplers import RADSampler
+from dfax.samplers import RADSampler, ReachAvoidSampler, ReachSampler
 import flax.serialization as serialization
 from flax.traverse_util import flatten_dict
 from dfax import DFAx, dfa2dfax, list2batch, batch2graph
 from flax.linen.initializers import constant, orthogonal
-from .paths import checkpoint_path, default_storage_dir, log_path, parse_checkpoint_name, run_name
+from .paths import checkpoint_path, default_storage_dir, log_path, parse_checkpoint_name, parse_log_name, run_name
+
+# Samplers that can generate bisimulation-game pairs, keyed by the short name used in file names.
+SAMPLERS = {
+    "RAD": RADSampler,
+    "R": ReachSampler,
+    "RA": ReachAvoidSampler,
+}
+# Long names accepted wherever a sampler name is taken.
+SAMPLER_ALIASES = {
+    "ReachAvoidDerived": "RAD",
+    "Reach": "R",
+    "ReachAvoid": "RA",
+}
+
+
+def canonical_sampler(name: str) -> str:
+    name = SAMPLER_ALIASES.get(name, name)
+    if name not in SAMPLERS:
+        raise ValueError(f"Unknown sampler {name!r}; expected one of {list(SAMPLERS) + list(SAMPLER_ALIASES)}")
+    return name
+
+
+# Sentinel for "use the sampler's own p", since p=None itself means DFA sizes are sampled uniformly.
+SAMPLER_DEFAULT_P = object()
+
+
+def _check_p(p) -> float | None:
+    # dfax samples DFA sizes n in [min_size, max_size] with weights p ** n, or uniformly when p is None.
+    if p is None:
+        return None
+    p = float(p)
+    if not p > 0:
+        raise ValueError(f"p must be positive, or None for uniformly sampled DFA sizes; got {p}")
+    return p
+
+
+def resolve_p(sampler: str, p=SAMPLER_DEFAULT_P) -> float | None:
+    if p is SAMPLER_DEFAULT_P:
+        p = SAMPLERS[canonical_sampler(sampler)].p
+    return _check_p(p)
+
+
+def parse_p(s: str) -> float | None:
+    # Command-line form of p: "None" (or "uniform") for uniformly sampled DFA sizes, otherwise a positive float.
+    return _check_p(None if s.lower() in ("none", "uniform") else float(s))
 
 
 class GATv2Conv(nn.Module):
@@ -118,8 +163,10 @@ class EncoderModule(nn.Module):
         wandb_entity: str = "beyazit-y-berkeley-eecs",
         wandb_project: str = "rad-jax",
         debug: bool = False,
-        log: str | bool | None = None,
+        log: bool = True,
         overwrite: bool = False,
+        sampler: str = "RAD",
+        p: float | None = SAMPLER_DEFAULT_P,
         # Training hyperparameters
         lr: float = 1e-3,
         num_envs: int = 16,
@@ -135,25 +182,36 @@ class EncoderModule(nn.Module):
         max_grad_norm: float = 0.5,
         anneal_lr: bool = False,
     ):
-        # log: None writes the CSV next to the checkpoint, False disables it, and a string is used as the path.
+        # log: write the CSV training log next to the checkpoint.
+        # p: omitted uses the sampler's own default; None samples DFA sizes uniformly.
+
+        sampler = canonical_sampler(sampler)
+        p = resolve_p(sampler, p)
 
         if save_dir is None:
             save_dir = default_storage_dir()
         os.makedirs(save_dir, exist_ok=True)
 
-        run = dict(max_size=max_size, n_tokens=n_tokens, seed=seed, binary_reward=binary_reward, gamma=gamma)
+        run = dict(max_size=max_size, n_tokens=n_tokens, seed=seed, binary_reward=binary_reward, gamma=gamma, sampler=sampler, p=p)
         params_file = checkpoint_path(save_dir, **run)
-        if log is None:
-            log = log_path(save_dir, **run)
 
-        existing = [f for f in (params_file, log) if f and os.path.exists(f)]
-        if existing and not overwrite:
+        # Match on the parsed config rather than the path, so files named before the sampler key existed count too.
+        this_run = parse_checkpoint_name(params_file)
+        existing = [
+            os.path.join(save_dir, f) for f in sorted(os.listdir(save_dir))
+            if (parse_checkpoint_name(f) or parse_log_name(f)) == this_run
+        ]
+        # Only a checkpoint means the run finished; a log without one is left over from an interrupted run.
+        trained = [f for f in existing if parse_checkpoint_name(f)]
+        if trained and not overwrite:
             raise FileExistsError(
-                f"Refusing to overwrite existing run files: {existing}. Pass overwrite=True (--overwrite in train.py) to replace them."
+                f"Refusing to overwrite already trained run: {trained}. Pass overwrite=True (--overwrite in train.py) to replace it."
             )
-        if log and os.path.exists(log):
-            # The CSV logger appends, so a stale log would mix two runs.
-            os.remove(log)
+        for f in existing:
+            # The CSV logger appends, so a stale log would mix two runs; old-style duplicates would shadow the new name.
+            # The checkpoint at params_file itself is kept until the new one overwrites it.
+            if f != params_file:
+                os.remove(f)
 
         config = {
             "LR": lr,
@@ -173,7 +231,9 @@ class EncoderModule(nn.Module):
 
         config["DEBUG"] = debug
         config["WANDB"] = enable_wandb
-        config["LOG"] = log
+        config["LOG"] = log_path(save_dir, **run) if log else None
+        config["SAMPLER"] = sampler
+        config["SAMPLER_P"] = p
 
         if config["WANDB"]:
             wandb.init(
@@ -185,8 +245,7 @@ class EncoderModule(nn.Module):
 
         key = jax.random.PRNGKey(seed)
 
-        sampler = RADSampler(max_size=max_size, n_tokens=n_tokens)
-        env = DFABisimEnv(sampler=sampler, binary_reward=binary_reward)
+        env = DFABisimEnv(sampler=SAMPLERS[sampler](max_size=max_size, n_tokens=n_tokens, p=p), binary_reward=binary_reward)
         env = LogWrapper(env=env, config=config)
 
         encoder = cls(max_size=max_size)
@@ -213,8 +272,10 @@ class EncoderModule(nn.Module):
         out = train_jit(key)
 
         trained_params = out["runner_state"][0].params
+        # Serialize first: to_bytes blocks until training finishes, so an interrupted run leaves no empty checkpoint.
+        params_bytes = serialization.to_bytes(trained_params)
         with open(params_file, "wb") as f:
-            f.write(serialization.to_bytes(trained_params))
+            f.write(params_bytes)
 
         if config["WANDB"]:
             wandb.finish()
@@ -274,11 +335,15 @@ class Encoder:
         binary_reward: bool = False,
         gamma: float = 0.9,
         debug: bool = False,
+        sampler: str = "RAD",
+        p: float | None = SAMPLER_DEFAULT_P,
     ):
+        sampler = canonical_sampler(sampler)
+        p = resolve_p(sampler, p)
         key = jax.random.PRNGKey(seed)
         self.encoder = EncoderModule(max_size=max_size)
-        sampler = RADSampler()
-        dfa = sampler.sample(key)
+        # Only used to trace parameter shapes for init, so the sampler here doesn't matter.
+        dfa = RADSampler().sample(key)
         dfa_graph = dfa.to_graph()
         self.encoder_ac = ActorCritic(action_dim=n_tokens, encoder=self.encoder, deterministic=True)
         params = self.encoder_ac.init(key, {"graph_l": dfa_graph, "graph_r": dfa_graph})
@@ -295,13 +360,15 @@ class Encoder:
             if run is None:
                 continue
             available.append(fname)
-            if run["n_tokens"] == n_tokens and run["binary_reward"] == binary_reward and (abs(run["gamma"] - self.gamma) < 1e-8):
+            same_p = run["p"] == p if None in (run["p"], p) else abs(run["p"] - p) < 1e-8
+            if run["n_tokens"] == n_tokens and run["binary_reward"] == binary_reward and (abs(run["gamma"] - self.gamma) < 1e-8) and run["sampler"] == sampler and same_p:
                 candidates.append((run["max_size"], run["seed"], run["gamma"], fname))
 
         if not candidates:
             raise FileNotFoundError(
                 f"No pretrained encoder found in {storage_dir} with n_tokens == {n_tokens}, "
-                f"binary_reward == {binary_reward} and gamma == {gamma}. Available checkpoints: {available}"
+                f"binary_reward == {binary_reward}, gamma == {gamma}, sampler == {sampler!r} and p == {p}. "
+                f"Available checkpoints: {available}"
             )
 
         # Prefer checkpoints trained at the requested max_size, then smaller training sizes.

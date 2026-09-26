@@ -1,8 +1,7 @@
 import jax
 import argparse
-from rad_embeddings.encoder import Encoder
+from rad_embeddings.encoder import Encoder, SAMPLERS, SAMPLER_ALIASES, SAMPLER_DEFAULT_P, canonical_sampler, parse_p, resolve_p
 from dfa_gym import DFABisimEnv
-from dfax.samplers import RADSampler
 
 
 if __name__ == "__main__":
@@ -55,12 +54,27 @@ if __name__ == "__main__":
         default=0.9,
         help="Gamma (default: 0.9)"
     )
+    parser.add_argument(
+        "--sampler",
+        choices=list(SAMPLERS) + list(SAMPLER_ALIASES),
+        default="RAD",
+        help="Sampler the encoder was trained with, also used to generate test pairs: RAD (ReachAvoidDerived), R (Reach) or RA (ReachAvoid) (default: RAD)"
+    )
+    parser.add_argument(
+        "--p",
+        type=parse_p,
+        default=argparse.SUPPRESS,
+        help="Sampler's DFA-size distribution the encoder was trained with, also used for test pairs: "
+             "sizes n are drawn with weight p**n, or uniformly if p is None (default: the sampler's own p)"
+    )
     args = parser.parse_args()
+    args.sampler = canonical_sampler(args.sampler)
+    args.p = resolve_p(args.sampler, getattr(args, "p", SAMPLER_DEFAULT_P))
 
     key = jax.random.PRNGKey(args.seed)
 
-    sampler = RADSampler(max_size=args.n_states, n_tokens=args.n_tokens)
-    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, storage_dir=args.save_dir, binary_reward=args.binary_reward, gamma=args.gamma, debug=True)
+    sampler = SAMPLERS[args.sampler](max_size=args.n_states, n_tokens=args.n_tokens, p=args.p)
+    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, storage_dir=args.save_dir, binary_reward=args.binary_reward, gamma=args.gamma, debug=True, sampler=args.sampler, p=args.p)
     env = DFABisimEnv(sampler=sampler, binary_reward=args.binary_reward)
 
     total_reward = 0
