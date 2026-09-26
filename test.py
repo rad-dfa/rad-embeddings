@@ -17,8 +17,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save-dir",
         type=str,
-        default="storage",
-        help="Directory for saving the trained encoder (default: storage)"
+        default=None,
+        help="Directory to load the trained encoder from (default: None, i.e., the package's bundled storage)"
     )
     parser.add_argument(
         "--n",
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     key = jax.random.PRNGKey(args.seed)
 
     sampler = RADSampler(max_size=args.n_states, n_tokens=args.n_tokens)
-    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, binary_reward=args.binary_reward, gamma=args.gamma, debug=True)
+    encoder = Encoder(max_size=args.max_size, n_tokens=args.n_tokens, seed=args.seed, storage_dir=args.save_dir, binary_reward=args.binary_reward, gamma=args.gamma, debug=True)
     env = DFABisimEnv(sampler=sampler, binary_reward=args.binary_reward)
 
     total_reward = 0

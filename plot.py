@@ -1,56 +1,55 @@
 import os
-import re
 import glob
+import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from rad_embeddings.paths import default_storage_dir, parse_log_name
 
-
-def parse_filename(filename):
-    """
-    Extract gamma and seed from filenames like:
-    log_n_states_10_n_tokens_10_binary_reward_True_gamma_0.99_seed_42.csv
-    """
-    pattern = r"gamma_([0-9.]+)_seed_([0-9]+)\.csv"
-    match = re.search(pattern, os.path.basename(filename))
-    if match:
-        gamma = float(match.group(1))
-        seed = int(match.group(2))
-        return gamma, seed
-    return None, None
+# Runs that share these fields are treated as seeds of the same configuration.
+GROUP_KEYS = ("max_size", "n_tokens", "binary_reward", "gamma")
 
 
 def load_runs(log_dir):
     """
-    Load all CSVs and group by gamma.
+    Load all CSVs named by rad_embeddings.paths.log_path and group them by configuration.
     Returns:
-        runs_by_gamma = {
-            gamma1: [df_seed1, df_seed2, ...],
-            gamma2: [...]
+        runs_by_group = {
+            (max_size, n_tokens, binary_reward, gamma): [df_seed1, df_seed2, ...],
+            ...
         }
     """
-    runs_by_gamma = {}
+    runs_by_group = {}
 
-    for filepath in glob.glob(os.path.join(log_dir, "*.csv")):
-        gamma, seed = parse_filename(filepath)
-        if gamma is None:
+    for filepath in sorted(glob.glob(os.path.join(log_dir, "*.csv"))):
+        run = parse_log_name(filepath)
+        if run is None:
             print(f"Skipping unmatched file: {filepath}")
             continue
 
         df = pd.read_csv(filepath)
-        runs_by_gamma.setdefault(gamma, []).append(df)
+        runs_by_group.setdefault(tuple(run[k] for k in GROUP_KEYS), []).append(df)
 
-    return runs_by_gamma
+    return runs_by_group
 
 
-def aggregate_runs(runs_by_gamma):
+def group_labels(groups):
     """
-    Keep only completed runs (same final timestep as the longest run for each gamma),
+    Label each group by only the fields that differ across groups (gamma if none do).
+    """
+    varying = [i for i in range(len(GROUP_KEYS)) if len({g[i] for g in groups}) > 1]
+    varying = varying or [GROUP_KEYS.index("gamma")]
+    return {g: ", ".join(f"{GROUP_KEYS[i]}={g[i]}" for i in varying) for g in groups}
+
+
+def aggregate_runs(runs_by_group, labels):
+    """
+    Keep only completed runs (same final timestep as the longest run in each group),
     then compute mean/std across seeds.
     """
     aggregated = {}
 
-    for gamma, runs in runs_by_gamma.items():
+    for group, runs in runs_by_group.items():
         # Find the maximum final timestep
         max_timestep = max(run["timestep"].iloc[-1] for run in runs)
 
@@ -62,10 +61,10 @@ def aggregate_runs(runs_by_gamma):
 
         dropped = len(runs) - len(completed_runs)
         if dropped > 0:
-            print(f"Gamma {gamma}: dropped {dropped} incomplete runs")
+            print(f"{labels[group]}: dropped {dropped} incomplete runs")
 
         if len(completed_runs) == 0:
-            print(f"Gamma {gamma}: no completed runs found, skipping")
+            print(f"{labels[group]}: no completed runs found, skipping")
             continue
 
         base = completed_runs[0][["timestep"]].copy()
@@ -76,14 +75,14 @@ def aggregate_runs(runs_by_gamma):
             base[f"{metric}_mean"] = values.mean(axis=0)
             base[f"{metric}_std"] = values.std(axis=0)
 
-        aggregated[gamma] = base
+        aggregated[group] = base
 
     return aggregated
 
 
-def plot_metrics(aggregated, output_dir="plots"):
+def plot_metrics(aggregated, labels, output_dir):
     """
-    Plot all metrics with mean ± std shading for each gamma.
+    Plot all metrics with mean ± std shading for each group.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -96,13 +95,13 @@ def plot_metrics(aggregated, output_dir="plots"):
     for metric in metrics:
         plt.figure(figsize=(8, 5))
 
-        for gamma in sorted(aggregated.keys()):
-            df = aggregated[gamma]
+        for group in sorted(aggregated.keys()):
+            df = aggregated[group]
             x = df["timestep"].values
             mean = df[f"{metric}_mean"].values
             std = df[f"{metric}_std"].values
 
-            plt.plot(x, mean, label=f"gamma={gamma}")
+            plt.plot(x, mean, label=labels[group])
             plt.fill_between(x, mean - std, mean + std, alpha=0.2)
 
         plt.xlabel("Timestep")
@@ -120,15 +119,20 @@ def plot_metrics(aggregated, output_dir="plots"):
 
 
 def main():
-    log_dir = "storage"  # change this to your log directory
-    runs_by_gamma = load_runs(log_dir)
+    parser = argparse.ArgumentParser(description="Plot training curves (mean ± std over seeds) from CSV logs.")
+    parser.add_argument("--log-dir", type=str, default=default_storage_dir(), help="Directory containing the CSV logs (default: the package's bundled storage)")
+    parser.add_argument("--output-dir", type=str, default=None, help="Directory for the plots (default: <log-dir>/plots)")
+    args = parser.parse_args()
 
-    if not runs_by_gamma:
+    runs_by_group = load_runs(args.log_dir)
+
+    if not runs_by_group:
         print("No valid CSV files found.")
         return
 
-    aggregated = aggregate_runs(runs_by_gamma)
-    plot_metrics(aggregated)
+    labels = group_labels(list(runs_by_group))
+    aggregated = aggregate_runs(runs_by_group, labels)
+    plot_metrics(aggregated, labels, args.output_dir or os.path.join(args.log_dir, "plots"))
 
 
 if __name__ == "__main__":

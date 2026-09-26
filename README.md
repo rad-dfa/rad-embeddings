@@ -92,7 +92,7 @@ dfa_r = DFAx.create(
 distinguishing_action = encoder.solve(dfa_l, dfa_r) # Returns 1 as token 1 is the one-step distinguishing action
 ```
 
-<!--To train your own encoder, first clone the repo and then use [train.py](https://github.com/rad-dfa/rad-embeddings/blob/main/rad_embeddings/train.py).
+<!--To train your own encoder, first clone the repo and then use [train.py](https://github.com/rad-dfa/rad-embeddings/blob/main/train.py) (`uv run train.py --help` lists all options).
 
 ```bash
 git clone https://github.com/rad-dfa/rad-embeddings.git

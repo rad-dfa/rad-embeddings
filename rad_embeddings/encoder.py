@@ -1,5 +1,4 @@
 import os
-import re
 import jax
 import jraph
 import wandb
@@ -16,6 +15,7 @@ import flax.serialization as serialization
 from flax.traverse_util import flatten_dict
 from dfax import DFAx, dfa2dfax, list2batch, batch2graph
 from flax.linen.initializers import constant, orthogonal
+from .paths import checkpoint_path, default_storage_dir, log_path, parse_checkpoint_name, run_name
 
 
 class GATv2Conv(nn.Module):
@@ -118,7 +118,8 @@ class EncoderModule(nn.Module):
         wandb_entity: str = "beyazit-y-berkeley-eecs",
         wandb_project: str = "rad-jax",
         debug: bool = False,
-        log: str = "log.csv",
+        log: str | bool | None = None,
+        overwrite: bool = False,
         # Training hyperparameters
         lr: float = 1e-3,
         num_envs: int = 16,
@@ -134,6 +135,25 @@ class EncoderModule(nn.Module):
         max_grad_norm: float = 0.5,
         anneal_lr: bool = False,
     ):
+        # log: None writes the CSV next to the checkpoint, False disables it, and a string is used as the path.
+
+        if save_dir is None:
+            save_dir = default_storage_dir()
+        os.makedirs(save_dir, exist_ok=True)
+
+        run = dict(max_size=max_size, n_tokens=n_tokens, seed=seed, binary_reward=binary_reward, gamma=gamma)
+        params_file = checkpoint_path(save_dir, **run)
+        if log is None:
+            log = log_path(save_dir, **run)
+
+        existing = [f for f in (params_file, log) if f and os.path.exists(f)]
+        if existing and not overwrite:
+            raise FileExistsError(
+                f"Refusing to overwrite existing run files: {existing}. Pass overwrite=True (--overwrite in train.py) to replace them."
+            )
+        if log and os.path.exists(log):
+            # The CSV logger appends, so a stale log would mix two runs.
+            os.remove(log)
 
         config = {
             "LR": lr,
@@ -159,6 +179,7 @@ class EncoderModule(nn.Module):
             wandb.init(
                 entity=wandb_entity,
                 project=wandb_project,
+                name=run_name(**run),
                 config=config
             )
 
@@ -191,13 +212,8 @@ class EncoderModule(nn.Module):
         train_jit = jax.jit(make_train(config, env, network))
         out = train_jit(key)
 
-        if save_dir is None:
-            save_dir = os.path.join(os.path.dirname(__file__), "storage")
-
-        os.makedirs(save_dir, exist_ok=True)
-
         trained_params = out["runner_state"][0].params
-        with open(f"{save_dir}/encoder_params_max_size_{max_size}_n_tokens_{n_tokens}_seed_{seed}_binary_reward_{binary_reward}_gamma_{gamma}.msgpack", "wb") as f:
+        with open(params_file, "wb") as f:
             f.write(serialization.to_bytes(trained_params))
 
         if config["WANDB"]:
@@ -270,31 +286,26 @@ class Encoder:
         self.debug = debug
 
         if storage_dir is None:
-            storage_dir = os.path.join(os.path.dirname(__file__), "storage")
+            storage_dir = default_storage_dir()
 
-        pattern = re.compile(
-            r"encoder_params_max_size_(\d+)_n_tokens_(\d+)_seed_(\d+)_binary_reward_(True|False)_gamma_([\d\.eE+-]+)\.msgpack"
-        )
-
+        available = []
         candidates = []
-        for fname in os.listdir(storage_dir):
-            m = pattern.match(fname)
-            if m:
-                f_max_size, f_n_tokens, f_seed, f_binary_reward, f_gamma = m.groups()
-                f_max_size = int(f_max_size)
-                f_n_tokens = int(f_n_tokens)
-                f_seed = int(f_seed)
-                f_binary_reward = f_binary_reward == "True"
-                f_gamma = float(f_gamma)
-                if f_n_tokens == n_tokens and f_binary_reward == binary_reward and (abs(f_gamma - self.gamma) < 1e-8):
-                    candidates.append((f_max_size, f_seed, f_gamma, fname))
+        for fname in sorted(os.listdir(storage_dir)):
+            run = parse_checkpoint_name(fname)
+            if run is None:
+                continue
+            available.append(fname)
+            if run["n_tokens"] == n_tokens and run["binary_reward"] == binary_reward and (abs(run["gamma"] - self.gamma) < 1e-8):
+                candidates.append((run["max_size"], run["seed"], run["gamma"], fname))
 
         if not candidates:
             raise FileNotFoundError(
-                f"No pretrained encoder found with n_tokens == {n_tokens} and binary_reward == {binary_reward}"
+                f"No pretrained encoder found in {storage_dir} with n_tokens == {n_tokens}, "
+                f"binary_reward == {binary_reward} and gamma == {gamma}. Available checkpoints: {available}"
             )
 
-        candidates.sort(key=lambda x: x[0])
+        # Prefer checkpoints trained at the requested max_size, then smaller training sizes.
+        candidates.sort(key=lambda x: (x[0] != max_size, x[0]))
         chosen = None
 
         for c in candidates:
