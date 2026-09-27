@@ -4,22 +4,28 @@ import argparse
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from rad_embeddings.paths import default_storage_dir, parse_log_name
+from matplotlib.ticker import FuncFormatter
+from rad_embeddings.paths import config_name, default_storage_dir, parse_log_name
 
-# Runs that share these fields are treated as seeds of the same configuration.
-GROUP_KEYS = ("max_size", "n_tokens", "binary_reward", "gamma", "sampler", "p")
+# Light-mode colors from the dataviz reference palette
+SERIES = "#2a78d6"
+SURFACE = "#fcfcfb"
+INK = "#0b0b0b"
+INK_SECONDARY = "#52514e"
+INK_MUTED = "#898781"
+GRID = "#e1e0d9"
 
 
 def load_runs(log_dir):
     """
-    Load all CSVs named by rad_embeddings.paths.log_path and group them by configuration.
+    Load all CSVs named by rad_embeddings.paths.log_path and group them by configuration (everything but the seed).
     Returns:
-        runs_by_group = {
-            (max_size, n_tokens, binary_reward, gamma, sampler, p): [df_seed1, df_seed2, ...],
+        runs_by_config = {
+            config_name: (run_without_seed, [df_seed1, df_seed2, ...]),
             ...
         }
     """
-    runs_by_group = {}
+    runs_by_config = {}
 
     for filepath in sorted(glob.glob(os.path.join(log_dir, "*.csv"))):
         run = parse_log_name(filepath)
@@ -28,113 +34,103 @@ def load_runs(log_dir):
             continue
 
         df = pd.read_csv(filepath)
-        runs_by_group.setdefault(tuple(run[k] for k in GROUP_KEYS), []).append(df)
+        run.pop("seed")
+        runs_by_config.setdefault(config_name(**run), (run, []))[1].append(df)
 
-    return runs_by_group
+    return runs_by_config
 
 
-def group_labels(groups):
+def aggregate_runs(name, runs):
     """
-    Label each group by only the fields that differ across groups (gamma if none do).
+    Keep only completed runs (same final timestep as the longest run of the config),
+    then compute mean/std across seeds. Returns (aggregated df, number of seeds kept), or None.
     """
-    varying = [i for i in range(len(GROUP_KEYS)) if len({g[i] for g in groups}) > 1]
-    varying = varying or [GROUP_KEYS.index("gamma")]
-    return {g: ", ".join(f"{GROUP_KEYS[i]}={g[i]}" for i in varying) for g in groups}
+    max_timestep = max(run["timestep"].iloc[-1] for run in runs)
+    completed_runs = [run for run in runs if run["timestep"].iloc[-1] == max_timestep]
+
+    dropped = len(runs) - len(completed_runs)
+    if dropped > 0:
+        print(f"{name}: dropped {dropped} incomplete runs")
+
+    base = completed_runs[0][["timestep"]].copy()
+    metrics = [c for c in completed_runs[0].columns if c != "timestep"]
+
+    for metric in metrics:
+        values = np.stack([run[metric].values for run in completed_runs], axis=0)
+        base[f"{metric}_mean"] = values.mean(axis=0)
+        base[f"{metric}_std"] = values.std(axis=0)
+
+    return base, len(completed_runs)
 
 
-def aggregate_runs(runs_by_group, labels):
+def plot_config(df, n_seeds, run, output_dir):
     """
-    Keep only completed runs (same final timestep as the longest run in each group),
-    then compute mean/std across seeds.
-    """
-    aggregated = {}
-
-    for group, runs in runs_by_group.items():
-        # Find the maximum final timestep
-        max_timestep = max(run["timestep"].iloc[-1] for run in runs)
-
-        # Keep only runs that reached max timestep
-        completed_runs = [
-            run for run in runs
-            if run["timestep"].iloc[-1] == max_timestep
-        ]
-
-        dropped = len(runs) - len(completed_runs)
-        if dropped > 0:
-            print(f"{labels[group]}: dropped {dropped} incomplete runs")
-
-        if len(completed_runs) == 0:
-            print(f"{labels[group]}: no completed runs found, skipping")
-            continue
-
-        base = completed_runs[0][["timestep"]].copy()
-        metrics = [c for c in completed_runs[0].columns if c != "timestep"]
-
-        for metric in metrics:
-            values = np.stack([run[metric].values for run in completed_runs], axis=0)
-            base[f"{metric}_mean"] = values.mean(axis=0)
-            base[f"{metric}_std"] = values.std(axis=0)
-
-        aggregated[group] = base
-
-    return aggregated
-
-
-def plot_metrics(aggregated, labels, output_dir):
-    """
-    Plot all metrics with mean ± std shading for each group.
+    One line chart per metric (mean ± std over seeds), all saved in output_dir.
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    sample_df = next(iter(aggregated.values()))
-    metrics = sorted(set(
-        col[:-5] for col in sample_df.columns
-        if col.endswith("_mean") and col != "timestep"
-    ))
+    metrics = [col[:-5] for col in df.columns if col.endswith("_mean")]
+    seeds = "1 seed" if n_seeds == 1 else f"mean ± std over {n_seeds} seeds"
+    subtitle = (
+        f"sampler {run['sampler']} · p {run['p']} · max_size {run['max_size']} · n_tokens {run['n_tokens']} · "
+        f"binary_reward {run['binary_reward']} · gamma {run['gamma']} · {seeds}"
+    )
+    x = df["timestep"].values
 
     for metric in metrics:
-        plt.figure(figsize=(8, 5))
+        mean = df[f"{metric}_mean"].values
+        std = df[f"{metric}_std"].values
 
-        for group in sorted(aggregated.keys(), key=lambda g: tuple(float("-inf") if v is None else v for v in g)):
-            df = aggregated[group]
-            x = df["timestep"].values
-            mean = df[f"{metric}_mean"].values
-            std = df[f"{metric}_std"].values
+        fig, ax = plt.subplots(figsize=(8, 5), facecolor=SURFACE)
+        ax.set_facecolor(SURFACE)
 
-            plt.plot(x, mean, label=labels[group])
-            plt.fill_between(x, mean - std, mean + std, alpha=0.2)
+        ax.fill_between(x, mean - std, mean + std, color=SERIES, alpha=0.1, linewidth=0)
+        ax.plot(x, mean, color=SERIES, linewidth=2, solid_joinstyle="round", solid_capstyle="round")
 
-        plt.xlabel("Timestep")
-        plt.ylabel(metric)
-        plt.title(f"{metric} vs Timestep")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
+        # Label only the final value, at the end of the line
+        ax.plot(x[-1], mean[-1], "o", color=SERIES, markersize=8, markeredgecolor=SURFACE, markeredgewidth=2)
+        final = f"{mean[-1]:,.0f}" if abs(mean[-1]) >= 1000 else f"{mean[-1]:.3g}"
+        ax.annotate(final, (x[-1], mean[-1]), xytext=(8, 0), textcoords="offset points",
+                    va="center", color=INK_SECONDARY, fontsize=9)
 
-        save_path = os.path.join(output_dir, f"{metric}.png")
-        plt.savefig(save_path)
-        plt.close()
+        ax.grid(True, color=GRID, linewidth=0.75, linestyle="-")
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        for side in ("left", "bottom"):
+            ax.spines[side].set_color(GRID)
+        ax.tick_params(colors=GRID, labelcolor=INK_MUTED, labelsize=9)
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:,.0f}"))
+        # No offset/exponent label: it would sit on top of the subtitle
+        ax.ticklabel_format(axis="y", style="plain", useOffset=False)
+        ax.set_xlabel("Timestep", color=INK_SECONDARY, fontsize=10)
 
-        print(f"Saved {save_path}")
+        ax.set_title(metric, loc="left", color=INK, fontsize=13, fontweight="bold", pad=22)
+        ax.text(0, 1.02, subtitle, transform=ax.transAxes, color=INK_SECONDARY, fontsize=8.5, va="bottom")
+
+        fig.savefig(os.path.join(output_dir, f"{metric}.png"), facecolor=SURFACE, bbox_inches="tight", dpi=100)
+        plt.close(fig)
+
+    print(f"Saved {len(metrics)} plots to {output_dir}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Plot training curves (mean ± std over seeds) from CSV logs.")
+    parser = argparse.ArgumentParser(description="Plot training curves (mean ± std over seeds) from CSV logs, one folder per configuration.")
     parser.add_argument("--log-dir", type=str, default=default_storage_dir(), help="Directory containing the CSV logs (default: the package's bundled storage)")
-    parser.add_argument("--output-dir", type=str, default=None, help="Directory for the plots (default: <log-dir>/plots)")
+    parser.add_argument("--output-dir", type=str, default=None, help="Directory for the plots, one subfolder per configuration (default: <log-dir>/plots)")
     args = parser.parse_args()
+    output_dir = args.output_dir or os.path.join(args.log_dir, "plots")
 
-    runs_by_group = load_runs(args.log_dir)
+    runs_by_config = load_runs(args.log_dir)
 
-    if not runs_by_group:
+    if not runs_by_config:
         print("No valid CSV files found.")
         return
 
-    labels = group_labels(list(runs_by_group))
-    aggregated = aggregate_runs(runs_by_group, labels)
-    plot_metrics(aggregated, labels, args.output_dir or os.path.join(args.log_dir, "plots"))
+    for name, (run, runs) in runs_by_config.items():
+        df, n_seeds = aggregate_runs(name, runs)
+        plot_config(df, n_seeds, run, os.path.join(output_dir, name))
 
 
 if __name__ == "__main__":
     main()
-

@@ -19,10 +19,16 @@ def default_storage_dir() -> str:
     return os.path.join(os.path.dirname(__file__), "storage")
 
 
-def run_name(max_size: int, n_tokens: int, seed: int, binary_reward: bool, gamma: float, sampler: str, p: float | None) -> str:
+def run_name(max_size: int, n_tokens: int, seed: int | None, binary_reward: bool, gamma: float, sampler: str, p: float | None) -> str:
     # repr(float(...)) round-trips exactly, so 0.9 from the CLI and 0.9 from Python give the same name
     p = "None" if p is None else repr(float(p))
-    return f"max_size_{int(max_size)}_n_tokens_{int(n_tokens)}_seed_{int(seed)}_binary_reward_{bool(binary_reward)}_gamma_{float(gamma)!r}_sampler_{sampler}_p_{p}"
+    seed = "" if seed is None else f"_seed_{int(seed)}"
+    return f"max_size_{int(max_size)}_n_tokens_{int(n_tokens)}{seed}_binary_reward_{bool(binary_reward)}_gamma_{float(gamma)!r}_sampler_{sampler}_p_{p}"
+
+
+def config_name(**run) -> str:
+    # The run name without the seed: names a configuration across seeds, e.g. one plot folder per config
+    return run_name(**dict(run, seed=None))
 
 
 def checkpoint_path(save_dir: str, **run) -> str:
