@@ -22,7 +22,7 @@ parser.add_argument(
 )
 parser.add_argument("--binary-reward", action="store_true", default=defaults["binary_reward"], help="Use binary rewards in the bisimulation game")
 parser.add_argument("--gamma", type=float, default=defaults["gamma"], help="Discount factor (part of the run name, used by Encoder to select checkpoints)")
-parser.add_argument("--save-dir", type=str, default=default_storage_dir(), help="Directory for the checkpoint and CSV log")
+parser.add_argument("--save-dir", type=str, default=default_storage_dir(), help="Storage directory: the checkpoint goes to <save-dir>/models, the CSV log to <save-dir>/logs")
 parser.add_argument("--no-log", action="store_true", help="Don't write the CSV training log")
 parser.add_argument("--wandb", dest="enable_wandb", action="store_true", default=defaults["enable_wandb"], help="Log to Weights & Biases")
 parser.add_argument("--wandb-entity", type=str, default=defaults["wandb_entity"], help="W&B entity")

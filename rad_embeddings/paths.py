@@ -19,6 +19,19 @@ def default_storage_dir() -> str:
     return os.path.join(os.path.dirname(__file__), "storage")
 
 
+# Every storage directory keeps checkpoints, CSV logs and plots in these subdirectories.
+def models_dir(storage_dir: str) -> str:
+    return os.path.join(storage_dir, "models")
+
+
+def logs_dir(storage_dir: str) -> str:
+    return os.path.join(storage_dir, "logs")
+
+
+def plots_dir(storage_dir: str) -> str:
+    return os.path.join(storage_dir, "plots")
+
+
 def run_name(max_size: int, n_tokens: int, seed: int | None, binary_reward: bool, gamma: float, sampler: str, p: float | None) -> str:
     # repr(float(...)) round-trips exactly, so 0.9 from the CLI and 0.9 from Python give the same name
     p = "None" if p is None else repr(float(p))
@@ -31,12 +44,12 @@ def config_name(**run) -> str:
     return run_name(**dict(run, seed=None))
 
 
-def checkpoint_path(save_dir: str, **run) -> str:
-    return os.path.join(save_dir, f"{CHECKPOINT_PREFIX}_{run_name(**run)}{CHECKPOINT_EXT}")
+def checkpoint_path(storage_dir: str, **run) -> str:
+    return os.path.join(models_dir(storage_dir), f"{CHECKPOINT_PREFIX}_{run_name(**run)}{CHECKPOINT_EXT}")
 
 
-def log_path(save_dir: str, **run) -> str:
-    return os.path.join(save_dir, f"{LOG_PREFIX}_{run_name(**run)}{LOG_EXT}")
+def log_path(storage_dir: str, **run) -> str:
+    return os.path.join(logs_dir(storage_dir), f"{LOG_PREFIX}_{run_name(**run)}{LOG_EXT}")
 
 
 def _parse(regex: re.Pattern, fname: str) -> dict | None:

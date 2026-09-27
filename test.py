@@ -17,7 +17,7 @@ if __name__ == "__main__":
         "--save-dir",
         type=str,
         default=None,
-        help="Directory to load the trained encoder from (default: None, i.e., the package's bundled storage)"
+        help="Storage directory to load the trained encoder from, i.e. <save-dir>/models (default: None, i.e., the package's bundled storage)"
     )
     parser.add_argument(
         "--n",

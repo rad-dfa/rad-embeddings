@@ -15,7 +15,8 @@ import flax.serialization as serialization
 from flax.traverse_util import flatten_dict
 from dfax import DFAx, dfa2dfax, list2batch, batch2graph
 from flax.linen.initializers import constant, orthogonal
-from .paths import checkpoint_path, default_storage_dir, log_path, parse_checkpoint_name, parse_log_name, run_name
+import warnings
+from .paths import checkpoint_path, default_storage_dir, log_path, logs_dir, models_dir, parse_checkpoint_name, parse_log_name, run_name
 
 # Samplers that can generate bisimulation-game pairs, keyed by the short name used in file names.
 SAMPLERS = {
@@ -190,7 +191,8 @@ class EncoderModule(nn.Module):
 
         if save_dir is None:
             save_dir = default_storage_dir()
-        os.makedirs(save_dir, exist_ok=True)
+        os.makedirs(models_dir(save_dir), exist_ok=True)
+        os.makedirs(logs_dir(save_dir), exist_ok=True)
 
         run = dict(max_size=max_size, n_tokens=n_tokens, seed=seed, binary_reward=binary_reward, gamma=gamma, sampler=sampler, p=p)
         params_file = checkpoint_path(save_dir, **run)
@@ -198,8 +200,11 @@ class EncoderModule(nn.Module):
         # Match on the parsed config rather than the path, so files named before the sampler key existed count too.
         this_run = parse_checkpoint_name(params_file)
         existing = [
-            os.path.join(save_dir, f) for f in sorted(os.listdir(save_dir))
-            if (parse_checkpoint_name(f) or parse_log_name(f)) == this_run
+            os.path.join(models_dir(save_dir), f) for f in sorted(os.listdir(models_dir(save_dir)))
+            if parse_checkpoint_name(f) == this_run
+        ] + [
+            os.path.join(logs_dir(save_dir), f) for f in sorted(os.listdir(logs_dir(save_dir)))
+            if parse_log_name(f) == this_run
         ]
         # Only a checkpoint means the run finished; a log without one is left over from an interrupted run.
         trained = [f for f in existing if parse_checkpoint_name(f)]
@@ -342,8 +347,8 @@ class Encoder:
         p = resolve_p(sampler, p)
         key = jax.random.PRNGKey(seed)
         self.encoder = EncoderModule(max_size=max_size)
-        # Only used to trace parameter shapes for init, so the sampler here doesn't matter.
-        dfa = RADSampler().sample(key)
+        # Only used to trace parameter shapes for init; they depend on n_tokens but not on the sampler.
+        dfa = RADSampler(n_tokens=n_tokens).sample(key)
         dfa_graph = dfa.to_graph()
         self.encoder_ac = ActorCritic(action_dim=n_tokens, encoder=self.encoder, deterministic=True)
         params = self.encoder_ac.init(key, {"graph_l": dfa_graph, "graph_r": dfa_graph})
@@ -352,48 +357,70 @@ class Encoder:
 
         if storage_dir is None:
             storage_dir = default_storage_dir()
+        models = models_dir(storage_dir)
+        # These must match exactly; max_size and seed can fall back (below).
+        requested = f"n_tokens={n_tokens}, binary_reward={binary_reward}, gamma={gamma}, sampler={sampler!r}, p={p}"
+
+        if not os.path.isdir(models):
+            raise FileNotFoundError(f"No pretrained encoders: {models} doesn't exist. Train one with `train.py --save-dir {storage_dir}`.")
 
         available = []
         candidates = []
-        for fname in sorted(os.listdir(storage_dir)):
+        for fname in sorted(os.listdir(models)):
             run = parse_checkpoint_name(fname)
             if run is None:
                 continue
             available.append(fname)
             same_p = run["p"] == p if None in (run["p"], p) else abs(run["p"] - p) < 1e-8
             if run["n_tokens"] == n_tokens and run["binary_reward"] == binary_reward and (abs(run["gamma"] - self.gamma) < 1e-8) and run["sampler"] == sampler and same_p:
-                candidates.append((run["max_size"], run["seed"], run["gamma"], fname))
+                candidates.append((run["max_size"], run["seed"], fname))
 
         if not candidates:
             raise FileNotFoundError(
-                f"No pretrained encoder found in {storage_dir} with n_tokens == {n_tokens}, "
-                f"binary_reward == {binary_reward}, gamma == {gamma}, sampler == {sampler!r} and p == {p}. "
-                f"Available checkpoints: {available}"
+                f"No pretrained encoder in {models} with {requested}. Available checkpoints: {available}"
             )
 
-        # Prefer checkpoints trained at the requested max_size, then smaller training sizes.
-        candidates.sort(key=lambda x: (x[0] != max_size, x[0]))
-        chosen = None
+        def size_preference(trained_max_size):
+            # The requested training size first, then the smallest one that covers it, then the largest smaller one.
+            # max_size=None (unbounded message passing) prefers the largest training size.
+            if max_size is None:
+                return (1, -trained_max_size)
+            if trained_max_size == max_size:
+                return (0, 0)
+            if trained_max_size > max_size:
+                return (1, trained_max_size)
+            return (2, -trained_max_size)
 
-        for c in candidates:
-            if c[1] == seed:
-                chosen = c
-                break
-        if chosen is None:
-            for c in candidates:
-                if c[1] == 42:
-                    chosen = c
-                    break
+        candidates.sort(key=lambda c: size_preference(c[0]))
+        # The requested seed, else the default seed 42
+        chosen = next((c for c in candidates if c[1] == seed), None) or next((c for c in candidates if c[1] == 42), None)
 
         if chosen is None:
             raise FileNotFoundError(
-                f"No pretrained encoder found for seed {seed} or fallback seed 42 "
-                f"with n_tokens == {n_tokens}"
+                f"No pretrained encoder in {models} with {requested} and seed {seed} or the fallback seed 42. "
+                f"Seeds available for this config: {sorted({c[1] for c in candidates})}"
             )
 
-        params_file = os.path.join(storage_dir, chosen[3])
+        chosen_max_size, chosen_seed, chosen_fname = chosen
+        fallbacks = []
+        if chosen_seed != seed:
+            fallbacks.append(f"seed {chosen_seed} instead of {seed}")
+        if max_size is not None and chosen_max_size != max_size:
+            fallbacks.append(f"trained with max_size {chosen_max_size} instead of {max_size}")
+        if fallbacks:
+            warnings.warn(
+                f"No pretrained encoder with {requested}, max_size={max_size}, seed={seed}; "
+                f"falling back to {chosen_fname} ({', '.join(fallbacks)})."
+            )
+
+        params_file = os.path.join(models, chosen_fname)
         with open(params_file, "rb") as f:
             self.encoder_ac_params = serialization.from_bytes(params, f.read())
+
+        # from_bytes doesn't check array shapes, so catch a checkpoint whose contents don't match its name
+        shapes = lambda tree: jax.tree_util.tree_map(jnp.shape, tree)
+        if shapes(self.encoder_ac_params) != shapes(params):
+            raise ValueError(f"{params_file} doesn't match an encoder with {requested}: parameter shapes differ.")
 
         self.encoder_params = {"params": self.encoder_ac_params["params"]["encoder"]}
 

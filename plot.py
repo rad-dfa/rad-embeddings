@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
-from rad_embeddings.paths import config_name, default_storage_dir, parse_log_name
+from rad_embeddings.paths import config_name, default_storage_dir, logs_dir, parse_log_name, plots_dir
 
 # Light-mode colors from the dataviz reference palette
 SERIES = "#2a78d6"
@@ -116,12 +116,11 @@ def plot_config(df, n_seeds, run, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="Plot training curves (mean ± std over seeds) from CSV logs, one folder per configuration.")
-    parser.add_argument("--log-dir", type=str, default=default_storage_dir(), help="Directory containing the CSV logs (default: the package's bundled storage)")
-    parser.add_argument("--output-dir", type=str, default=None, help="Directory for the plots, one subfolder per configuration (default: <log-dir>/plots)")
+    parser.add_argument("--storage-dir", type=str, default=default_storage_dir(), help="Storage directory: reads <storage-dir>/logs, writes <storage-dir>/plots with one subfolder per configuration (default: the package's bundled storage)")
     args = parser.parse_args()
-    output_dir = args.output_dir or os.path.join(args.log_dir, "plots")
+    output_dir = plots_dir(args.storage_dir)
 
-    runs_by_config = load_runs(args.log_dir)
+    runs_by_config = load_runs(logs_dir(args.storage_dir))
 
     if not runs_by_config:
         print("No valid CSV files found.")
