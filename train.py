@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument("--seed", type=int, default=defaults["seed"], help="Random seed for reproducibility")
 parser.add_argument("--max-size", "--n-states", dest="max_size", type=int, default=defaults["max_size"], help="Maximum number of DFA states")
 parser.add_argument("--n-tokens", type=int, default=defaults["n_tokens"], help="Number of tokens in the DFA alphabet")
-parser.add_argument("--sampler", choices=list(SAMPLERS) + list(SAMPLER_ALIASES), default=defaults["sampler"], help="DFA sampler used to generate bisimulation-game pairs: RAD (ReachAvoidDerived), R (Reach) or RA (ReachAvoid)")
+parser.add_argument("--sampler", choices=list(SAMPLERS) + list(SAMPLER_ALIASES), default=defaults["sampler"], help=f"DFA sampler used to generate bisimulation-game pairs: {', '.join(f'{short} ({long})' for long, short in SAMPLER_ALIASES.items())}")
 parser.add_argument(
     "--p", type=parse_p, default=argparse.SUPPRESS,
     help="Sampler's DFA-size distribution: sizes n are drawn with weight p**n, or uniformly if p is None "

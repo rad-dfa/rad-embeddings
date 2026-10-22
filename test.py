@@ -58,7 +58,7 @@ if __name__ == "__main__":
         "--sampler",
         choices=list(SAMPLERS) + list(SAMPLER_ALIASES),
         default="RAD",
-        help="Sampler the encoder was trained with, also used to generate test pairs: RAD (ReachAvoidDerived), R (Reach) or RA (ReachAvoid) (default: RAD)"
+        help=f"Sampler the encoder was trained with, also used to generate test pairs: {', '.join(f'{short} ({long})' for long, short in SAMPLER_ALIASES.items())} (default: RAD)"
     )
     parser.add_argument(
         "--p",

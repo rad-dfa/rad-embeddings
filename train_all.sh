@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Train an encoder for every combination of sampler, max size, alphabet size, reward type and p
-# (3 x 2 x 2 x 2 x 2 = 48 runs). Arguments are passed on to every train.py call, e.g.
+# (4 x 2 x 2 x 2 x 2 = 64 runs). Arguments are passed on to every train.py call, e.g.
 #
 #   ./train_all.sh --save-dir storage --seed 0 --gamma 0.9
 #
 # Runs that already have a checkpoint are skipped (train.py refuses to overwrite them unless --overwrite
-# is passed), so re-running the script after an interruption resumes the sweep.
+# is passed), so re-running the script after an interruption resumes the sweep. Likewise, with the 48
+# bundled RAD/R/RA runs already in place, running it with no arguments trains only the 16 MIX runs.
 
 set -o pipefail
 cd "$(dirname "$0")"
 
-samplers=(RAD R RA)
+samplers=(RAD R RA MIX)
 max_sizes=(10 5)
 n_tokens_list=(10 5)
 binary_rewards=(False True)

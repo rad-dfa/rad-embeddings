@@ -10,7 +10,7 @@ from .ppo import make_train
 from typing import Sequence
 from dfa_gym import DFABisimEnv
 from .wrappers import LogWrapper
-from dfax.samplers import RADSampler, ReachAvoidSampler, ReachSampler
+from dfax.samplers import MixtureSampler, RADSampler, ReachAvoidSampler, ReachSampler
 import flax.serialization as serialization
 from flax.traverse_util import flatten_dict
 from dfax import DFAx, dfa2dfax, list2batch, batch2graph
@@ -23,12 +23,14 @@ SAMPLERS = {
     "RAD": RADSampler,
     "R": ReachSampler,
     "RA": ReachAvoidSampler,
+    "MIX": MixtureSampler,
 }
 # Long names accepted wherever a sampler name is taken.
 SAMPLER_ALIASES = {
     "ReachAvoidDerived": "RAD",
     "Reach": "R",
     "ReachAvoid": "RA",
+    "Mixture": "MIX",
 }
 
 
